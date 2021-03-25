@@ -2,10 +2,14 @@
 const SECRET_KEY="abcd12345";
 
 //Server酱 key，用于推送微信信息
-const WechatKey = "XXXXXX";
+const WechatKey = "XXX";
 
-//仅用于调试，重复信息到bot，一般应保持为空, 12345:ABCDE
-const TG_KEY="";
+//钉钉机器人配置，保持为空的的话则不会推送给钉钉
+const DD_WEBHOOK = "https://oapi.dingtalk.com/robot/send?access_token=XXXX";
+//添加钉钉机器人的时候，构选 【加签】 后会得到一个key，注意不要勾选其它安全选项
+const DD_SECRET_KEY = "XXX";
+
+
 /**
  * 根据CF规范注册fetch event.
  */
@@ -22,8 +26,10 @@ async function handleRequest(request) {
 
     if (request.method == 'POST' && url.pathname.endsWith(SECRET_KEY)) {
         let data = await request.json()
-        if(data.message !== undefined){
+        if (data.message !== undefined) {
             await sendMessageWechat(data.message);
+            sendToDingDing(data.message);
+
             return new Response(
                 "Success",
                 { status: 200 });;
@@ -35,35 +41,53 @@ async function handleRequest(request) {
         { status: 403 });;
 }
 
-
-async function sendMessageWechat(message){
-    debug(message);
-    let msgUrl = `https://sc.ftqq.com/${WechatKey}.send`;
-    try {
-        await fetch(msgUrl,{
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded'
-            },
-            body: `text=${message.text}`
+/**
+ * 通过server酱发送信息
+ */
+async function sendMessageWechat(message) {
+    if (WechatKey) {
+        let msgUrl = `https://sc.ftqq.com/${WechatKey}.send`;
+        try {
+            await fetch(msgUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                },
+                body: `text=${message.text}`
             });
-    }catch(e){
-        console.log(e);
+        } catch (e) {
+            console.log(e);
+        }
     }
 }
 
-async function debug(message){
-    if(TG_KEY){
-        var data = {
+
+/**
+ * 钉钉发送信息时候的签名函数
+ */
+function sign(secret, content) {
+    const str = crypto.createHmac('sha256', secret).update(content)
+        .digest()
+        .toString('base64');
+    return encodeURIComponent(str);
+}
+
+/**
+ * 发送钉钉信息
+ */
+function sendToDingDing(message) {
+    if (DD_WEBHOOK && DD_SECRET_KEY) {
+        let timestamp = Date.now();
+        let signStr = '&timestamp=' + timestamp + '&sign=' + sign(DD_SECRET_KEY, timestamp + '\n' + DD_SECRET_KEY);
+
+        let msgReq = {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({
-                    "chat_id": message.chat.id,
-                    "text": message.text,
-            })
-          }
-        fetch(`https://api.telegram.org/bot${TG_KEY}/sendMessage`, data);
+            body: JSON.stringify({ "msgtype": "text", "text": { "content": message.text } })
+        };
+
+        fetch(DD_WEBHOOK + signStr, msgReq);
     }
 }
