@@ -1,5 +1,5 @@
 //提供给TG bot的回调地址要以这个key结尾，以防止被其它人恶意访问
-const SECRET_KEY="abcd12345";
+const SECRET_KEY = "abcd12345";
 
 //Server酱 key，用于推送微信信息
 const WechatKey = "XXX";
@@ -61,24 +61,38 @@ async function sendMessageWechat(message) {
     }
 }
 
+async function importKey(secret) {
+    return await crypto.subtle.importKey(
+        'raw',
+        new TextEncoder().encode(secret),
+        { name: 'HMAC', hash: 'SHA-256' },
+        false,
+        ['sign', 'verify'],
+    )
+}
 
 /**
  * 钉钉发送信息时候的签名函数
  */
-function sign(secret, content) {
-    const str = crypto.createHmac('sha256', secret).update(content)
-        .digest()
-        .toString('base64');
-    return encodeURIComponent(str);
+async function sign(secret, message) {
+    const key = await importKey(secret)
+    const signature = await crypto.subtle.sign(
+        'HMAC',
+        key,
+        new TextEncoder().encode(message),
+    )
+
+    // Convert ArrayBuffer to Base64
+    return btoa(String.fromCharCode(...new Uint8Array(signature)))
 }
 
 /**
  * 发送钉钉信息
  */
-function sendToDingDing(message) {
+async function sendToDingDing(message) {
     if (DD_WEBHOOK && DD_SECRET_KEY) {
         let timestamp = Date.now();
-        let signStr = '&timestamp=' + timestamp + '&sign=' + sign(DD_SECRET_KEY, timestamp + '\n' + DD_SECRET_KEY);
+        let signStr = '&timestamp=' + timestamp + '&sign=' + (await sign(DD_SECRET_KEY, timestamp + '\n' + DD_SECRET_KEY));
 
         let msgReq = {
             method: 'POST',
